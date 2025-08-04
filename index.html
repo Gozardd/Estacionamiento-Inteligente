@@ -5,20 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SmartPark Pro - Dashboard</title>
     <link rel="stylesheet" href="style.css">
+    
+    <link rel="stylesheet" href="metrics.css">
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <!-- Background Elements -->
     <div class="bg-elements">
         <div class="bg-circle bg-circle-1"></div>
         <div class="bg-circle bg-circle-2"></div>
         <div class="bg-circle bg-circle-3"></div>
     </div>
 
-    <!-- Header -->
     <header class="main-header">
         <div class="header-content">
             <div class="logo-section">
@@ -44,7 +47,6 @@
         </div>
     </header>
 
-    <!-- Statistics Bar --->
     <section class="stats-bar">
         <div class="stats-container">
             <div class="stat-card">
@@ -89,7 +91,6 @@
         </div>
     </section>
 
-    <!-- Main Content -->
     <main class="main-content">
         <div class="section-header">
             <h2><i class="fas fa-map-marked-alt"></i> Estado en Tiempo Real</h2>
@@ -100,13 +101,31 @@
         </div>
         
         <div id="parking-lot-container" class="parking-grid">
-            <!-- Los espacios se cargarán aquí dinámicamente -->
-        </div>
+            </div>
+
+        <section class="metrics-section">
+            <div class="section-header">
+                <h2><i class="fas fa-chart-pie"></i> Métricas y Análisis</h2>
+                <div class="download-buttons">
+                    <button id="download-status-csv" class="download-btn">
+                        <i class="fas fa-download"></i> Estado Actual (CSV)
+                    </button>
+                    <button id="download-history-csv" class="download-btn">
+                        <i class="fas fa-history"></i> Historial (CSV)
+                    </button>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="occupancy-chart"></canvas>
+            </div>
+        </section>
     </main>
 
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="script.js"></script>
+
+    <script src="metrics.js"></script>
 </body>
 </html>
