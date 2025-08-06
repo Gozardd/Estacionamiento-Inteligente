@@ -3,12 +3,13 @@
 document.addEventListener('DOMContentLoaded', () => {
 
     // === VARIABLES GLOBALES PARA MÉTRICAS ===
-    let metricsSpotsData = null; // Almacenará los datos más recientes para el CSV
-    let occupancyChart = null;   // Objeto del gráfico
-    let occupancyHistory = [];   // Historial para el gráfico y CSV
-    const MAX_HISTORY_POINTS = 60; // Máximo de puntos a mostrar en el gráfico
+    let metricsSpotsData = null;
+    let occupancyChart = null;
+    let occupancyHistory = [];
+    const MAX_HISTORY_POINTS = 60;
+    let lastKnownEfficiency = -1; // Novedad: Para evitar guardar datos duplicados
 
-    // --- Funciones de ayuda (duplicadas para ser autocontenido) ---
+    // --- Funciones de ayuda ---
     const formatDateTimeForCSV = (timestamp) => {
         return new Date(timestamp).toLocaleString('es-ES', {
             year: 'numeric', month: '2-digit', day: '2-digit',
@@ -30,33 +31,66 @@ document.addEventListener('DOMContentLoaded', () => {
         return stats;
     };
 
-    // --- Lógica de Firebase (independiente del script.js original) ---
-    // Se asume que Firebase ya fue inicializado por el script.js
-    // Verificamos que el objeto firebase exista para no causar errores. 
+    // --- Lógica de Firebase ---
     if (typeof firebase !== 'undefined') {
         const database = firebase.database();
         const parkingSpotsRef = database.ref('parking_spots');
+        // Novedad: Referencia a la nueva ruta para el historial persistente
+        const historyRef = database.ref('occupancy_history');
 
-        // Escuchamos los cambios en los datos del estacionamiento
+        // Modificado: Este listener ahora solo se encarga de GUARDAR el nuevo historial
         parkingSpotsRef.on('value', (snapshot) => {
             metricsSpotsData = snapshot.val();
             if (metricsSpotsData) {
                 const stats = calculateMetricsStats(metricsSpotsData);
-                updateOccupancyHistory(stats.efficiency);
+                // Solo guardamos un nuevo punto si la tasa de eficiencia ha cambiado
+                if (stats.efficiency !== lastKnownEfficiency) {
+                    lastKnownEfficiency = stats.efficiency;
+                    const now = new Date();
+                    // Guardamos el nuevo punto en la base de datos de Firebase
+                    historyRef.push({
+                        rate: stats.efficiency,
+                        time: now.toISOString() // Usamos formato ISO para consistencia
+                    });
+                }
             }
         }, (error) => {
-            console.error("Error desde metrics.js al cargar datos:", error);
+            console.error("Error al leer parking_spots:", error);
         });
-    } else {
-        console.error("Firebase no está inicializado. Asegúrate de que script.js se carga primero.");
-    }
 
+        // Novedad: Un nuevo listener que se encarga de LEER el historial y ACTUALIZAR el gráfico
+        // Usamos limitToLast para obtener solo los últimos N puntos y ser eficientes
+        historyRef.limitToLast(MAX_HISTORY_POINTS).on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                // Convertimos el objeto de Firebase a un array ordenado
+                occupancyHistory = Object.keys(data).map(key => ({
+                    time: new Date(data[key].time),
+                    rate: data[key].rate
+                }));
+                
+                // Si el gráfico no existe, lo inicializamos. Si ya existe, lo actualizamos.
+                if (!occupancyChart) {
+                    initializeChart();
+                }
+                updateChartDisplay();
+            } else {
+                // Si no hay historial en la BD, igual inicializamos el gráfico vacío
+                initializeChart();
+            }
+        }, (error) => {
+            console.error("Error al leer occupancy_history:", error);
+        });
+
+    } else {
+        console.error("Firebase no está inicializado.");
+    }
 
     // === FUNCIONES DE GRÁFICOS Y DESCARGA ===
 
     function initializeChart() {
         const ctx = document.getElementById('occupancy-chart');
-        if (!ctx) return;
+        if (!ctx || occupancyChart) return; // Evitar reinicializar
         
         occupancyChart = new Chart(ctx, {
             type: 'line',
@@ -76,14 +110,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
-                    y: { 
-                        min: 0, 
-                        max: 100,
-                        ticks: { color: '#b8c5d6' } 
-                    },
-                    x: { 
-                        ticks: { color: '#b8c5d6' } 
-                    }
+                    y: { min: 0, max: 100, ticks: { color: '#b8c5d6' } },
+                    x: { ticks: { color: '#b8c5d6' } }
                 },
                 plugins: {
                     legend: { labels: { color: '#ffffff' } }
@@ -92,23 +120,18 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function updateOccupancyHistory(newRate) {
+    // Novedad: Función dedicada a actualizar los datos del gráfico
+    function updateChartDisplay() {
         if (!occupancyChart) return;
 
-        const now = new Date();
-        occupancyHistory.push({ time: now, rate: newRate });
-        
-        if (occupancyHistory.length > MAX_HISTORY_POINTS) {
-            occupancyHistory.shift(); // Elimina el punto más antiguo
-        }
-        
         occupancyChart.data.labels = occupancyHistory.map(p => p.time.toLocaleTimeString('es-ES'));
         occupancyChart.data.datasets[0].data = occupancyHistory.map(p => p.rate);
-        occupancyChart.update('none'); // 'none' para evitar animación parpadeante
+        occupancyChart.update('none');
     }
 
+    // ... (El resto de tus funciones de descarga CSV permanecen igual)
     function downloadCSV(csvContent, filename) {
-        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' }); // \uFEFF para BOM de UTF-8
+        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
         const url = URL.createObjectURL(blob);
         link.setAttribute("href", url);
@@ -161,7 +184,7 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadCSV(csv, 'historial_ocupacion_smartpark.csv');
     }
 
-    // --- INICIALIZACIÓN ---
+    // --- INICIALIZACIÓN DE BOTONES ---
     const downloadStatusBtn = document.getElementById('download-status-csv');
     const downloadHistoryBtn = document.getElementById('download-history-csv');
 
@@ -172,5 +195,5 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadHistoryBtn.addEventListener('click', downloadHistoryCSV);
     }
     
-    initializeChart();
+    // Ya no inicializamos el gráfico aquí, se hace cuando llegan los datos del historial
 });
