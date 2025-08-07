@@ -1,13 +1,12 @@
-// metrics.js - Lógica para el gráfico y la descarga de CSV (CON HISTORIAL PERSISTENTE)
+// metrics.js - Lógica para el gráfico y la descarga de CSV (CON HISTORIAL PERSISTENTE DE 24 HORAS)
 
 document.addEventListener('DOMContentLoaded', () => {
 
     // === VARIABLES GLOBALES PARA MÉTRICAS ===
     let metricsSpotsData = null;    // Almacenará los datos más recientes para el CSV
     let occupancyChart = null;      // Objeto del gráfico
-    // CAMBIADO: Ya no usaremos un historial local para el gráfico, se leerá directo de Firebase.
-    let csvDownloadHistory = [];    // Historial SÍ se mantiene para la descarga del CSV de la sesión actual.
-    const MAX_HISTORY_POINTS = 60;  // Máximo de puntos a LEER de Firebase para el gráfico
+    let csvDownloadHistory = [];    // Historial para la descarga del CSV de la sesión actual.
+    // CAMBIADO: Ya no necesitamos MAX_HISTORY_POINTS, ahora nos basamos en el tiempo.
 
     // --- Funciones de ayuda ---
     const formatDateTimeForCSV = (timestamp) => {
@@ -35,24 +34,20 @@ document.addEventListener('DOMContentLoaded', () => {
     if (typeof firebase !== 'undefined') {
         const database = firebase.database();
         const parkingSpotsRef = database.ref('parking_spots');
-        // NUEVO: Referencia a la nueva ubicación del historial en Firebase
         const historyRef = database.ref('occupancy_history');
 
-        let lastKnownRate = -1; // Para no guardar datos si la tasa no ha cambiado
+        let lastKnownRate = -1; 
 
-        // 1. ESCUCHAR CAMBIOS EN LOS PUESTOS PARA GUARDAR EL HISTORIAL
+        // 1. ESCUCHAR CAMBIOS EN LOS PUESTOS PARA GUARDAR EL HISTORIAL (Sin cambios aquí)
         parkingSpotsRef.on('value', (snapshot) => {
             metricsSpotsData = snapshot.val();
             if (metricsSpotsData) {
                 const stats = calculateMetricsStats(metricsSpotsData);
                 const newRate = stats.efficiency;
-
-                // NUEVO: Guardar en Firebase solo si la tasa de ocupación cambia.
                 if (newRate !== lastKnownRate) {
-                    console.log(`Nueva tasa de ocupación: ${newRate}%. Guardando en historial.`);
                     historyRef.push({
                         rate: newRate,
-                        timestamp: firebase.database.ServerValue.TIMESTAMP // Usa la hora del servidor, más precisa
+                        timestamp: firebase.database.ServerValue.TIMESTAMP
                     });
                     lastKnownRate = newRate;
                 }
@@ -62,21 +57,22 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // 2. ESCUCHAR CAMBIOS EN EL HISTORIAL PARA ACTUALIZAR EL GRÁFICO
-        // CAMBIADO: Leemos el historial de Firebase en lugar de manejarlo localmente
-        historyRef.limitToLast(MAX_HISTORY_POINTS).on('value', (snapshot) => {
-            if (!occupancyChart) return; // No hacer nada si el gráfico no está listo
+        // CAMBIO PRINCIPAL: Se consulta por tiempo, no por número de elementos.
+        const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000); // Timestamp de hace 24h
+
+        historyRef.orderByChild('timestamp').startAt(twentyFourHoursAgo).on('value', (snapshot) => {
+            if (!occupancyChart) return; 
 
             const historyData = snapshot.val();
             const labels = [];
             const dataPoints = [];
-            csvDownloadHistory = []; // Limpiamos el historial para descarga CSV
+            csvDownloadHistory = [];
 
             if (historyData) {
                 for (const key in historyData) {
                     const record = historyData[key];
                     labels.push(new Date(record.timestamp).toLocaleTimeString('es-ES'));
                     dataPoints.push(record.rate);
-                    // Llenamos también el historial para la descarga CSV
                     csvDownloadHistory.push({ time: record.timestamp, rate: record.rate });
                 }
             }
@@ -92,8 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error("Firebase no está inicializado. Asegúrate de que script.js se carga primero.");
     }
 
-
-    // === FUNCIONES DE GRÁFICOS Y DESCARGA (Lógica de descarga de historial ahora usa csvDownloadHistory) ===
+    // === FUNCIONES DE GRÁFICOS Y DESCARGA (Sin cambios a partir de aquí) ===
 
     function initializeChart() {
         const ctx = document.getElementById('occupancy-chart');
@@ -102,10 +97,10 @@ document.addEventListener('DOMContentLoaded', () => {
         occupancyChart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: [], // Se llenarán con datos de Firebase
+                labels: [], 
                 datasets: [{
-                    label: 'Tasa de Ocupación (%)',
-                    data: [], // Se llenarán con datos de Firebase
+                    label: 'Tasa de Ocupación (%) - Últimas 24h', // Etiqueta actualizada
+                    data: [],
                     borderColor: 'rgba(102, 126, 234, 1)',
                     backgroundColor: 'rgba(102, 126, 234, 0.2)',
                     borderWidth: 2,
@@ -126,9 +121,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-
-    // CAMBIADO: Esta función ya no es necesaria, la lógica se movió al listener de 'historyRef'.
-    // function updateOccupancyHistory(newRate) { ... }
 
     function downloadCSV(csvContent, filename) {
         const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -152,13 +144,9 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const id in metricsSpotsData) {
             const spot = metricsSpotsData[id];
             const row = [
-                `"${id}"`,
-                `"${spot.status || 'N/A'}"`,
-                spot.distance_cm || 'N/A',
-                spot.light_lux || 'N/A',
-                `"${spot.vibration_level || 'N/A'}"`,
-                spot.impact_detected ? 'SI' : 'NO',
-                `"${formatDateTimeForCSV(spot.last_update * 1000)}"`
+                `"${id}"`, `"${spot.status || 'N/A'}"`, spot.distance_cm || 'N/A',
+                spot.light_lux || 'N/A', `"${spot.vibration_level || 'N/A'}"`,
+                spot.impact_detected ? 'SI' : 'NO', `"${formatDateTimeForCSV(spot.last_update * 1000)}"`
             ].join(',');
             csv += row + '\n';
         }
@@ -166,7 +154,6 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadCSV(csv, 'estado_actual_smartpark.csv');
     }
 
-    // CAMBIADO: La función de descarga ahora usa la variable 'csvDownloadHistory'
     function downloadHistoryCSV() {
         if (csvDownloadHistory.length === 0) {
             alert("No hay historial de ocupación para descargar.");
@@ -175,14 +162,11 @@ document.addEventListener('DOMContentLoaded', () => {
         let csv = 'Fecha y Hora,Tasa de Ocupacion (%)\n';
         
         csvDownloadHistory.forEach(point => {
-            const row = [
-                `"${formatDateTimeForCSV(point.time)}"`,
-                point.rate
-            ].join(',');
+            const row = [`"${formatDateTimeForCSV(point.time)}"`, point.rate].join(',');
             csv += row + '\n';
         });
 
-        downloadCSV(csv, 'historial_ocupacion_smartpark.csv');
+        downloadCSV(csv, 'historial_ocupacion_24h_smartpark.csv');
     }
 
     // --- INICIALIZACIÓN ---
@@ -196,5 +180,5 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadHistoryBtn.addEventListener('click', downloadHistoryCSV);
     }
     
-    initializeChart(); // El gráfico se llenará cuando lleguen los datos de Firebase
+    initializeChart();
 });

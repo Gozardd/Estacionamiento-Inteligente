@@ -12,7 +12,6 @@ const firebaseConfig = {
 
 
 
-
 // Inicializar la aplicación de Firebase
 firebase.initializeApp(firebaseConfig);
 
