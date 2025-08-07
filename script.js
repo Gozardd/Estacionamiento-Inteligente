@@ -1,13 +1,17 @@
 // Configuración de Firebase con tus credenciales
 const firebaseConfig = {
-    apiKey: "AIzaSyB4zAX1nUMFmGrQg6K1YjM5Tz6qwigKoUU",
-    authDomain: "estacionamiento-intelige-76d89.firebaseapp.com",
-    databaseURL: "https://estacionamiento-intelige-76d89-default-rtdb.firebaseio.com/",
-    projectId: "estacionamiento-intelige-76d89",
-    storageBucket: "estacionamiento-intelige-76d89.appspot.com",
-    messagingSenderId: "SENDER_ID",
-    appId: "APP_ID"
+
+    apiKey: "AIzaSyAkdLEbIgCMcMWXdTfoysWqTyMyhTM8dHk",
+    authDomain: "estacionamiento-intelige-f32db.firebaseapp.com",
+    databaseURL: "https://estacionamiento-intelige-f32db-default-rtdb.firebaseio.com",
+    projectId: "estacionamiento-intelige-f32db",
+    storageBucket: "estacionamiento-intelige-f32db.firebasestorage.app",
+    messagingSenderId: "39502497188",
+    appId: "1:39502497188:web:2984841d788fd40be0ad31",
+    measurementId: "G-T9FM71K8CJ"
 };
+
+
 
 // Inicializar la aplicación de Firebase
 firebase.initializeApp(firebaseConfig);
