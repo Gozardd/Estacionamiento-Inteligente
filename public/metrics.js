@@ -32,11 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Lógica de Firebase (independiente del script.js original) ---
     // Se asume que Firebase ya fue inicializado por el script.js
-<<<<<<< HEAD:public/metrics.js
     // Verificamos que el objeto firebase exista para no causar errores.
-=======
-    // Verificamos que el objeto firebase exista para no causar errores. 
->>>>>>> parent of fe4b3a1 (act):metrics.js
     if (typeof firebase !== 'undefined') {
         const database = firebase.database();
         const parkingSpotsRef = database.ref('parking_spots');
