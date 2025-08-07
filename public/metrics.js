@@ -1,14 +1,15 @@
-// metrics.js - Lógica para el gráfico y la descarga de CSV
+// metrics.js - Lógica para el gráfico y la descarga de CSV (CON HISTORIAL PERSISTENTE)
 
 document.addEventListener('DOMContentLoaded', () => {
 
     // === VARIABLES GLOBALES PARA MÉTRICAS ===
-    let metricsSpotsData = null; // Almacenará los datos más recientes para el CSV
-    let occupancyChart = null;   // Objeto del gráfico
-    let occupancyHistory = [];   // Historial para el gráfico y CSV
-    const MAX_HISTORY_POINTS = 60; // Máximo de puntos a mostrar en el gráfico
+    let metricsSpotsData = null;    // Almacenará los datos más recientes para el CSV
+    let occupancyChart = null;      // Objeto del gráfico
+    // CAMBIADO: Ya no usaremos un historial local para el gráfico, se leerá directo de Firebase.
+    let csvDownloadHistory = [];    // Historial SÍ se mantiene para la descarga del CSV de la sesión actual.
+    const MAX_HISTORY_POINTS = 60;  // Máximo de puntos a LEER de Firebase para el gráfico
 
-    // --- Funciones de ayuda (duplicadas para ser autocontenido) ---
+    // --- Funciones de ayuda ---
     const formatDateTimeForCSV = (timestamp) => {
         return new Date(timestamp).toLocaleString('es-ES', {
             year: 'numeric', month: '2-digit', day: '2-digit',
@@ -30,29 +31,69 @@ document.addEventListener('DOMContentLoaded', () => {
         return stats;
     };
 
-    // --- Lógica de Firebase (independiente del script.js original) ---
-    // Se asume que Firebase ya fue inicializado por el script.js
-    // Verificamos que el objeto firebase exista para no causar errores.
+    // --- Lógica de Firebase ---
     if (typeof firebase !== 'undefined') {
         const database = firebase.database();
         const parkingSpotsRef = database.ref('parking_spots');
+        // NUEVO: Referencia a la nueva ubicación del historial en Firebase
+        const historyRef = database.ref('occupancy_history');
 
-        // Escuchamos los cambios en los datos del estacionamiento
+        let lastKnownRate = -1; // Para no guardar datos si la tasa no ha cambiado
+
+        // 1. ESCUCHAR CAMBIOS EN LOS PUESTOS PARA GUARDAR EL HISTORIAL
         parkingSpotsRef.on('value', (snapshot) => {
             metricsSpotsData = snapshot.val();
             if (metricsSpotsData) {
                 const stats = calculateMetricsStats(metricsSpotsData);
-                updateOccupancyHistory(stats.efficiency);
+                const newRate = stats.efficiency;
+
+                // NUEVO: Guardar en Firebase solo si la tasa de ocupación cambia.
+                if (newRate !== lastKnownRate) {
+                    console.log(`Nueva tasa de ocupación: ${newRate}%. Guardando en historial.`);
+                    historyRef.push({
+                        rate: newRate,
+                        timestamp: firebase.database.ServerValue.TIMESTAMP // Usa la hora del servidor, más precisa
+                    });
+                    lastKnownRate = newRate;
+                }
             }
         }, (error) => {
-            console.error("Error desde metrics.js al cargar datos:", error);
+            console.error("Error al cargar datos de los puestos:", error);
         });
+
+        // 2. ESCUCHAR CAMBIOS EN EL HISTORIAL PARA ACTUALIZAR EL GRÁFICO
+        // CAMBIADO: Leemos el historial de Firebase en lugar de manejarlo localmente
+        historyRef.limitToLast(MAX_HISTORY_POINTS).on('value', (snapshot) => {
+            if (!occupancyChart) return; // No hacer nada si el gráfico no está listo
+
+            const historyData = snapshot.val();
+            const labels = [];
+            const dataPoints = [];
+            csvDownloadHistory = []; // Limpiamos el historial para descarga CSV
+
+            if (historyData) {
+                for (const key in historyData) {
+                    const record = historyData[key];
+                    labels.push(new Date(record.timestamp).toLocaleTimeString('es-ES'));
+                    dataPoints.push(record.rate);
+                    // Llenamos también el historial para la descarga CSV
+                    csvDownloadHistory.push({ time: record.timestamp, rate: record.rate });
+                }
+            }
+            
+            occupancyChart.data.labels = labels;
+            occupancyChart.data.datasets[0].data = dataPoints;
+            occupancyChart.update();
+        }, (error) => {
+            console.error("Error al cargar el historial de ocupación:", error);
+        });
+
     } else {
         console.error("Firebase no está inicializado. Asegúrate de que script.js se carga primero.");
     }
 
 
-    // === FUNCIONES DE GRÁFICOS Y DESCARGA ===
+    // === FUNCIONES DE GRÁFICOS Y DESCARGA (Lógica de descarga de historial ahora usa csvDownloadHistory) ===
 
     function initializeChart() {
         const ctx = document.getElementById('occupancy-chart');
@@ -61,10 +102,10 @@ document.addEventListener('DOMContentLoaded', () => {
         occupancyChart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: [],
+                labels: [], // Se llenarán con datos de Firebase
                 datasets: [{
                     label: 'Tasa de Ocupación (%)',
-                    data: [],
+                    data: [], // Se llenarán con datos de Firebase
                     borderColor: 'rgba(102, 126, 234, 1)',
                     backgroundColor: 'rgba(102, 126, 234, 0.2)',
                     borderWidth: 2,
@@ -76,14 +117,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
-                    y: { 
-                        min: 0, 
-                        max: 100,
-                        ticks: { color: '#b8c5d6' } 
-                    },
-                    x: { 
-                        ticks: { color: '#b8c5d6' } 
-                    }
+                    y: { min: 0, max: 100, ticks: { color: '#b8c5d6' } },
+                    x: { ticks: { color: '#b8c5d6' } }
                 },
                 plugins: {
                     legend: { labels: { color: '#ffffff' } }
@@ -92,23 +127,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function updateOccupancyHistory(newRate) {
-        if (!occupancyChart) return;
-
-        const now = new Date();
-        occupancyHistory.push({ time: now, rate: newRate });
-        
-        if (occupancyHistory.length > MAX_HISTORY_POINTS) {
-            occupancyHistory.shift(); // Elimina el punto más antiguo
-        }
-        
-        occupancyChart.data.labels = occupancyHistory.map(p => p.time.toLocaleTimeString('es-ES'));
-        occupancyChart.data.datasets[0].data = occupancyHistory.map(p => p.rate);
-        occupancyChart.update('none'); // 'none' para evitar animación parpadeante
-    }
+    // CAMBIADO: Esta función ya no es necesaria, la lógica se movió al listener de 'historyRef'.
+    // function updateOccupancyHistory(newRate) { ... }
 
     function downloadCSV(csvContent, filename) {
-        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' }); // \uFEFF para BOM de UTF-8
+        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
         const url = URL.createObjectURL(blob);
         link.setAttribute("href", url);
@@ -143,14 +166,15 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadCSV(csv, 'estado_actual_smartpark.csv');
     }
 
+    // CAMBIADO: La función de descarga ahora usa la variable 'csvDownloadHistory'
     function downloadHistoryCSV() {
-        if (occupancyHistory.length === 0) {
+        if (csvDownloadHistory.length === 0) {
             alert("No hay historial de ocupación para descargar.");
             return;
         }
         let csv = 'Fecha y Hora,Tasa de Ocupacion (%)\n';
         
-        occupancyHistory.forEach(point => {
+        csvDownloadHistory.forEach(point => {
             const row = [
                 `"${formatDateTimeForCSV(point.time)}"`,
                 point.rate
@@ -172,5 +196,5 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadHistoryBtn.addEventListener('click', downloadHistoryCSV);
     }
     
-    initializeChart();
+    initializeChart(); // El gráfico se llenará cuando lleguen los datos de Firebase
 });
