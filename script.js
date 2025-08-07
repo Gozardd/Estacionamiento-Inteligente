@@ -1,15 +1,15 @@
 // Configuración de Firebase con tus credenciales
 const firebaseConfig = {
-
-    apiKey: "AIzaSyAkdLEbIgCMcMWXdTfoysWqTyMyhTM8dHk",
-    authDomain: "estacionamiento-intelige-f32db.firebaseapp.com",
-    databaseURL: "https://estacionamiento-intelige-f32db-default-rtdb.firebaseio.com",
-    projectId: "estacionamiento-intelige-f32db",
-    storageBucket: "estacionamiento-intelige-f32db.firebasestorage.app",
-    messagingSenderId: "39502497188",
-    appId: "1:39502497188:web:2984841d788fd40be0ad31",
-    measurementId: "G-T9FM71K8CJ"
+    apiKey: "AIzaSyChw_-sHvP7g1aW9dspdArCqTUGcoyV6Vw",
+    authDomain: "estacionamientointeligen-7b1ee.firebaseapp.com",
+    databaseURL: "https://estacionamientointeligen-7b1ee-default-rtdb.firebaseio.com",
+    projectId: "estacionamientointeligen-7b1ee",
+    storageBucket: "estacionamientointeligen-7b1ee.firebasestorage.app",
+    messagingSenderId: "648948548225",
+    appId: "1:648948548225:web:aec67c8f50548f7704c380",
+    measurementId: "G-HYRF6YLSNQ"
 };
+
 
 
 
